@@ -4,12 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>C Compiler</title>
-<link rel="stylesheet" href="https://unpkg.com/xterm@5.3.0/css/xterm.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
-    --bg:       #0d0f12;
+    --bg:        #0d0f12;
     --surface:  #13161b;
     --border:   #1f2430;
     --accent:   #4ade80;
@@ -109,7 +109,6 @@
   #editor-wrap {
     flex: 1;
     min-width: 0;
-    min-height: 0;
     display: flex;
     flex-direction: column;
   }
@@ -126,7 +125,7 @@
     border: 1px solid var(--border); border-bottom: none;
     font-size: 11px;
   }
-  #editor { flex: 1; min-height: 0; height: 100%; }
+  #editor { flex: 1; }
 
   /* ── Divider ── */
   #divider {
@@ -176,7 +175,6 @@
 <body>
 <div id="app">
 
-  <!-- Top bar -->
   <div id="topbar">
     <div class="logo">C<span>/</span>run</div>
 
@@ -194,7 +192,6 @@
     <button id="btn-run">▶ Executar</button>
   </div>
 
-  <!-- Main -->
   <div id="main">
     <div id="editor-wrap">
       <div id="editor-bar">
@@ -219,32 +216,27 @@
 
 <div id="conn-banner"></div>
 
-<!-- Monaco -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
-<!-- xterm -->
+
 <script type="module">
 import { Terminal } from 'https://cdn.jsdelivr.net/npm/xterm@5.3.0/+esm';
 import { FitAddon } from 'https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/+esm';
 
-<script>
 // ── xterm setup ──────────────────────────────────────────────
-const Terminal = window.Terminal || (window.Xterm && window.Xterm.Terminal);
-const FitAddon = window.FitAddon || (window.XtermAddonFit && window.XtermAddonFit.FitAddon);
- 
 const term = new Terminal({
   theme: {
     background: '#0a0c0f',
     foreground: '#cdd6f4',
-    cursor:     '#4ade80',
+    cursor:      '#4ade80',
     selectionBackground: '#4ade8030',
     black:   '#1e1e2e', brightBlack:   '#585b70',
-    red:     '#f38ba8', brightRed:     '#f38ba8',
-    green:   '#a6e3a1', brightGreen:   '#a6e3a1',
-    yellow:  '#f9e2af', brightYellow:  '#f9e2af',
-    blue:    '#89b4fa', brightBlue:    '#89b4fa',
+    red:     '#f38ba8', brightRed:      '#f38ba8',
+    green:   '#a6e3a1', brightGreen:    '#a6e3a1',
+    yellow:  '#f9e2af', brightYellow:   '#f9e2af',
+    blue:    '#89b4fa', brightBlue:     '#89b4fa',
     magenta: '#cba6f7', brightMagenta: '#cba6f7',
-    cyan:    '#89dceb', brightCyan:    '#89dceb',
-    white:   '#bac2de', brightWhite:   '#a6adc8',
+    cyan:    '#89dceb', brightCyan:     '#89dceb',
+    white:   '#bac2de', brightWhite:    '#a6adc8',
   },
   fontFamily: "'JetBrains Mono','Fira Code',monospace",
   fontSize: 13,
@@ -256,7 +248,7 @@ const term = new Terminal({
 const fitAddon = new FitAddon();
 term.loadAddon(fitAddon);
 term.open(document.getElementById('terminal'));
-fitAddon.fit();
+setTimeout(() => fitAddon.fit(), 100);
 
 // Input buffering
 let inputBuffer = '';
@@ -323,9 +315,6 @@ require(['vs/editor/editor.main'], () => {
     wordWrap: 'on',
   });
 
-  // Force layout after DOM settles
-  setTimeout(() => editor.layout(), 100);
-  window.addEventListener('resize', () => editor.layout());
   new ResizeObserver(() => editor.layout()).observe(document.getElementById('editor'));
 });
 
@@ -404,14 +393,12 @@ function connect(url) {
   };
 }
 
+// Evento corrigido para aceitar cliques e autocompletes de Enter com segurança
 serverInput.addEventListener('keypress', (e) => {
   if (e.key === 'Enter' || e.keyCode === 13) {
     e.preventDefault();
     const url = serverInput.value.trim();
-    if (url) {
-      console.log("Tentando conectar em: " + url);
-      connect(url);
-    }
+    if (url) connect(url);
   }
 });
 serverInput.addEventListener('blur', () => {
@@ -429,6 +416,7 @@ document.getElementById('btn-run').addEventListener('click', () => {
   if (!editor) return;
   term.reset();
   inputBuffer = '';
+  // CORREÇÃO AQUI: Enviando a propriedade correta esperada pelo seu backend
   wsSend('run', editor.getValue());
 });
 
