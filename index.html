@@ -400,10 +400,14 @@ function connect(url) {
   };
 }
 
-serverInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
+serverInput.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter' || e.keyCode === 13) {
+    e.preventDefault();
     const url = serverInput.value.trim();
-    if (url) connect(url);
+    if (url) {
+      console.log("Tentando conectar em: " + url);
+      connect(url);
+    }
   }
 });
 serverInput.addEventListener('blur', () => {
