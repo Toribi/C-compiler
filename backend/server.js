@@ -66,8 +66,7 @@ wss.on("connection", (ws) => {
       const srcPath = path.join(sessionDir, "main.c");
       const binPath = path.join(sessionDir, "main");
 
-      fs.writeFileSync(srcPath, msg.code);
-
+      fs.writeFileSync(srcPath, msg.data);
       send("status", "compiling");
 
       // Compile
