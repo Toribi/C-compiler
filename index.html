@@ -227,6 +227,9 @@
 
 <script>
 // ── xterm setup ──────────────────────────────────────────────
+const Terminal = window.Terminal || (window.Xterm && window.Xterm.Terminal);
+const FitAddon = window.FitAddon || (window.XtermAddonFit && window.XtermAddonFit.FitAddon);
+ 
 const term = new Terminal({
   theme: {
     background: '#0a0c0f',
@@ -249,7 +252,7 @@ const term = new Terminal({
   scrollback: 2000,
   allowProposedApi: true,
 });
-const fitAddon = new FitAddon.FitAddon();
+const fitAddon = new FitAddon();
 term.loadAddon(fitAddon);
 term.open(document.getElementById('terminal'));
 fitAddon.fit();
