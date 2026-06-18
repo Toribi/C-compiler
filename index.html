@@ -222,8 +222,9 @@
 <!-- Monaco -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
 <!-- xterm -->
-<script src="https://unpkg.com/xterm@5.3.0/lib/xterm.js"></script>
-<script src="https://unpkg.com/xterm@5.3.0/addon-fit/addon-fit.js"></script>
+<script type="module">
+import { Terminal } from 'https://cdn.jsdelivr.net/npm/xterm@5.3.0/+esm';
+import { FitAddon } from 'https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/+esm';
 
 <script>
 // ── xterm setup ──────────────────────────────────────────────
