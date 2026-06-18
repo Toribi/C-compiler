@@ -91,10 +91,11 @@ wss.on("connection", (ws) => {
         send("status", "running");
         send("output", ""); // clear signal
 
-        // Run with timeout
+        // CORREÇÃO DO SCANF: Adicionado stdio: ["pipe", "pipe", "pipe"] para criar os canais de texto
         childProcess = spawn(binPath, [], {
           cwd: sessionDir,
           timeout: 10000,
+          stdio: ["pipe", "pipe", "pipe"]
         });
 
         childProcess.stdout.on("data", (d) => send("output", d.toString()));
