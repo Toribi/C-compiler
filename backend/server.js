@@ -66,7 +66,10 @@ wss.on("connection", (ws) => {
       const srcPath = path.join(sessionDir, "main.c");
       const binPath = path.join(sessionDir, "main");
 
-      fs.writeFileSync(srcPath, msg.data);
+      // Desativa o buffer de saída direto na primeira linha do código C antes de compilar!
+      const codigoTratado = `#include <stdio.h>\n__attribute__((constructor)) void desativar_buffer() { setvbuf(stdout, NULL, _IONBF, 0); }\n` + msg.data;
+
+      fs.writeFileSync(srcPath, codigoTratado);
       send("status", "compiling");
 
       // Compile
