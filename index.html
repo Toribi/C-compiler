@@ -281,25 +281,41 @@ new ResizeObserver(() => fitAddon.fit()).observe(document.getElementById('termin
 
 // ── Botao Copiar ──
 const btnCopy = document.getElementById('btn-copy');
-btnCopy.addEventListener('click', () => {
-  const lines = [];
-  for (let i = 0; i < term.buffer.length; i++) {
-    const line = term.buffer.getLine(i);
-    if (line) {
-      const text = line.translateToString(true).trimEnd();
-      lines.push(text);
+btnCopy.addEventListener('click', async () => {
+  try {
+    let fullText = '';
+    // No Xterm.js v5, usamos term.buffer.active
+    const buffer = term.buffer.active;
+    for (let i = 0; i < buffer.length; i++) {
+      const line = buffer.getLine(i);
+      if (line) {
+        fullText += line.translateToString(true) + '\n';
+      }
     }
-  }
-  const texto = lines.join('\n').trim();
-  if (!texto) return;
-  navigator.clipboard.writeText(texto).then(() => {
+    fullText = fullText.trim();
+
+    // Se o terminal estiver vazio, avisa o usuario em vez de sumir silencioso
+    if (!fullText) {
+      btnCopy.textContent = 'Vazio';
+      setTimeout(() => btnCopy.textContent = 'Copiar', 1200);
+      return;
+    }
+
+    // Tenta copiar para a area de transferencia
+    await navigator.clipboard.writeText(fullText);
+    
+    // Feedback visual de sucesso
     btnCopy.textContent = 'Copiado!';
     btnCopy.classList.add('copied');
     setTimeout(() => {
       btnCopy.textContent = 'Copiar';
       btnCopy.classList.remove('copied');
-    }, 1500);
-  });
+    }, 1200);
+  } catch (e) {
+    // Se o navegador bloquear a copia por algum motivo de seguranca
+    btnCopy.textContent = 'Erro';
+    setTimeout(() => btnCopy.textContent = 'Copiar', 1200);
+  }
 });
 
 // ── Monaco ──
