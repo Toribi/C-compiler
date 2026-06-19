@@ -17,7 +17,6 @@ const wss = new WebSocket.Server({ server });
 const TMP_DIR = "/tmp/c-compiler";
 if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR, { recursive: true });
 
-// Limpa sessões antigas periodicamente
 setInterval(() => {
   const now = Date.now();
   try {
@@ -35,24 +34,53 @@ app.get("/health", (_, res) => res.json({ ok: true }));
 
 /**
  * Ajusta os números de linha nos erros do GCC subtraindo o offset
- * causado pelas linhas injetadas no início do código.
+ * causado pelas 2 linhas injetadas no início do código.
  */
 function ajustarLinhasErro(erro, offset) {
   if (offset <= 0) return erro;
 
-  // Padrão 1: /tmp/.../main.c:LINHA:COL: warning/error: ...
+  // Padrão: main.c:LINHA:COL: warning/error: ...
   erro = erro.replace(/(main\.c:)(\d+)(:)/g, (_, pre, num, pos) => {
     const novaLinha = Math.max(1, parseInt(num) - offset);
     return pre + novaLinha + pos;
   });
 
-  // Padrão 2: espaços + LINHA + " |" (carets de contexto do GCC)
+  // Padrão: espaços + LINHA + " |" (carets de contexto do GCC)
   erro = erro.replace(/^(\s*)(\d+) (\|)/gm, (_, spaces, num, pipe) => {
     const novaLinha = Math.max(1, parseInt(num) - offset);
     return spaces + novaLinha + " " + pipe;
   });
 
   return erro;
+}
+
+/**
+ * Remove do erro do GCC qualquer menção às linhas injetadas (1 e 2).
+ * Se o único erro for nas linhas do prefixo, retorna string vazia
+ * (não deveria acontecer, mas previne lixo na saída).
+ */
+function filtrarErrosDoPrefixo(erro, offset) {
+  // Remove linhas inteiras do erro que referenciam linhas do prefixo
+  const linhas = erro.split("\n");
+  const filtradas = [];
+  let i = 0;
+  while (i < linhas.length) {
+    const linha = linhas[i];
+    // Detecta padrão "main.c:NUM:" — se NUM <= offset, pula essa linha e o caret abaixo
+    const match = linha.match(/main\.c:(\d+):/);
+    if (match && parseInt(match[1]) <= offset) {
+      // Pula a linha do erro
+      i++;
+      // Pula possíveis linhas de contexto (carets) que seguem
+      while (i < linhas.length && /^\s*\d+\s*\|/.test(linhas[i])) i++;
+      // Pula linhas de "note:" ou "+++ |+#include" associadas
+      while (i < linhas.length && /^\s*(note:|  \+\+\+)/.test(linhas[i])) i++;
+      continue;
+    }
+    filtradas.push(linha);
+    i++;
+  }
+  return filtradas.join("\n").trim();
 }
 
 wss.on("connection", (ws) => {
@@ -73,9 +101,7 @@ wss.on("connection", (ws) => {
       return;
     }
 
-    // --- COMPILE + RUN ---
     if (msg.type === "run") {
-      // Mata processo anterior se existir
       if (childProcess) {
         try { childProcess.kill("SIGKILL"); } catch (_) {}
         childProcess = null;
@@ -88,24 +114,17 @@ wss.on("connection", (ws) => {
       const srcPath = path.join(sessionDir, "main.c");
       const binPath = path.join(sessionDir, "main");
 
-      // Monta o prefixo sem duplicar #include <stdio.h>
-      let prefixo = "";
-      const codigoUsuario = msg.data;
-      const jaTemStdio = /^\s*#\s*include\s*<stdio\.h>\s*/m.test(codigoUsuario);
+      // Sempre inclui stdio.h antes do constructor.
+      // Headers padrão têm include guards, então duplicar não causa problema.
+      const PREFIXO_LINHAS = 2;
+      const prefixo =
+        "#include <stdio.h>\n" +
+        "__attribute__((constructor)) void _desativar_buffer() { setvbuf(stdout, NULL, _IONBF, 0); }\n";
 
-      if (!jaTemStdio) {
-        prefixo += "#include <stdio.h>\n";
-      }
-      prefixo += "__attribute__((constructor)) void _desativar_buffer() { setvbuf(stdout, NULL, _IONBF, 0); }\n";
-
-      // Quantas linhas foram adicionadas (offset para correção de linha)
-      const offset = prefixo.split("\n").length - 1;
-
-      const codigoTratado = prefixo + codigoUsuario;
+      const codigoTratado = prefixo + msg.data;
       fs.writeFileSync(srcPath, codigoTratado);
       send("status", "compiling");
 
-      // Compila
       const gcc = spawn("gcc", [
         "-o", binPath,
         srcPath,
@@ -119,8 +138,18 @@ wss.on("connection", (ws) => {
 
       gcc.on("close", (code) => {
         if (code !== 0) {
-          // CORREÇÃO PRINCIPAL: ajusta as linhas antes de enviar
-          send("compile_error", ajustarLinhasErro(compileErr, offset));
+          // 1º: remove erros que se referem às linhas do prefixo
+          let erroFiltrado = filtrarErrosDoPrefixo(compileErr, PREFIXO_LINHAS);
+
+          // 2º: ajusta os números de linha restantes subtraindo o offset
+          let erroFinal = ajustarLinhasErro(erroFiltrado, PREFIXO_LINHAS);
+
+          // Se sobrou algo, envia; senão envia mensagem genérica
+          if (erroFinal.trim()) {
+            send("compile_error", erroFinal);
+          } else {
+            send("compile_error", "Erro de compilação (detalhes filtrados).\n");
+          }
           send("status", "idle");
           return;
         }
@@ -141,7 +170,7 @@ wss.on("connection", (ws) => {
           if (signal === "SIGKILL") {
             send("output", "\n[Processo encerrado por timeout ou pelo usuário]\n");
           } else {
-            send("output", `\n[Processo encerrado com código ${exitCode}]\n`);
+            send("output", `\n[Processo encerrado com código ${exitCode}]\n");
           }
           send("status", "idle");
           childProcess = null;
@@ -159,7 +188,6 @@ wss.on("connection", (ws) => {
       });
     }
 
-    // --- STDIN INPUT ---
     if (msg.type === "input") {
       if (childProcess && childProcess.stdin && !childProcess.stdin.destroyed) {
         try {
@@ -168,7 +196,6 @@ wss.on("connection", (ws) => {
       }
     }
 
-    // --- KILL ---
     if (msg.type === "kill") {
       if (childProcess) {
         try { childProcess.kill("SIGKILL"); } catch (_) {}
