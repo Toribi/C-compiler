@@ -33,10 +33,7 @@ setInterval(function() {
 app.get("/health", function(_, res) { res.json({ ok: true }); });
 
 function limparErroGCC(erro) {
-  // Remove o caminho completo, deixa so "main.c:"
   erro = erro.replace(/\/tmp\/c-compiler\/[^\/]+\/main\.c:/g, "main.c:");
-
-  // Remove linhas do linker e collect2 (pouco uteis para o usuario)
   var linhas = erro.split("\n");
   var filtradas = [];
   for (var i = 0; i < linhas.length; i++) {
@@ -134,12 +131,12 @@ wss.on("connection", function(ws) {
       gcc.on("close", function(code) {
         if (code !== 0) {
           var erroLimpo = limparErroGCC(compileErr);
-          var erroFiltrado = filtrarErrosDoPrefixo(compileErr, PREFIXO_LINHAS);
+          var erroFiltrado = filtrarErrosDoPrefixo(erroLimpo, PREFIXO_LINHAS);
           var erroFinal = ajustarLinhasErro(erroFiltrado, PREFIXO_LINHAS);
           if (erroFinal.trim()) {
             send("compile_error", erroFinal);
           } else {
-            send("compile_error", "Erro de compilacao (detalhes filtrados).\n");
+            send("compile_error", "Erro de compilacao.\n");
           }
           send("status", "idle");
           return;
