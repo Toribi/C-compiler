@@ -22,10 +22,8 @@
 
   html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace; }
 
-  /* ── Layout ── */
   #app { display: flex; flex-direction: column; height: 100vh; }
 
-  /* ── Top bar ── */
   #topbar {
     height: var(--bar-h);
     display: flex;
@@ -61,7 +59,6 @@
 
   #status-label { font-size: 11px; color: var(--muted); min-width: 70px; }
 
-  /* server input */
   #server-wrap {
     display: flex; align-items: center; gap: 6px;
   }
@@ -73,7 +70,7 @@
     font-family: inherit;
     font-size: 11px;
     padding: 4px 8px;
-    width: 230px;
+    width: 300px;
     outline: none;
     transition: border-color .2s;
   }
@@ -98,14 +95,12 @@
   #btn-stop { background: var(--err);     color: #0d0f12; display: none; }
   #btn-clear { background: transparent; border: 1px solid var(--border); color: var(--muted); }
 
-  /* ── Main pane ── */
   #main {
     display: flex;
     flex: 1;
     min-height: 0;
   }
 
-  /* ── Editor ── */
   #editor-wrap {
     flex: 1;
     min-width: 0;
@@ -127,7 +122,6 @@
   }
   #editor { flex: 1; }
 
-  /* ── Divider ── */
   #divider {
     width: 4px;
     background: var(--border);
@@ -137,7 +131,6 @@
   }
   #divider:hover { background: var(--accent2); }
 
-  /* ── Terminal pane ── */
   #terminal-wrap {
     width: 380px;
     min-width: 180px;
@@ -147,15 +140,31 @@
   }
   #terminal-bar {
     height: 28px; display: flex; align-items: center;
-    padding: 0 14px; gap: 8px;
+    padding: 0 10px; gap: 8px;
     background: var(--surface);
     border-bottom: 1px solid var(--border);
     font-size: 11px; color: var(--muted);
   }
   #terminal-bar .dot { width: 8px; height: 8px; border-radius: 50%; }
+  #terminal-bar .term-label { flex: 1; }
+
+  #btn-copy {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    cursor: pointer;
+    transition: color .2s, border-color .2s;
+  }
+  #btn-copy:hover { color: var(--accent2); border-color: var(--accent2); }
+  #btn-copy.copied { color: var(--accent); border-color: var(--accent); }
+
   #terminal { flex: 1; padding: 6px 4px; overflow: hidden; }
 
-  /* ── Connection banner ── */
   #conn-banner {
     display: none;
     position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
@@ -179,7 +188,7 @@
     <div class="logo">C<span>/</span>run</div>
 
     <div id="server-wrap">
-      <input id="server-input" type="text" placeholder="wss://seu-backend.railway.app" spellcheck="false">
+      <input id="server-input" type="text" spellcheck="false">
     </div>
 
     <div class="spacer"></div>
@@ -207,7 +216,8 @@
         <div class="dot" style="background:#f87171"></div>
         <div class="dot" style="background:#facc15"></div>
         <div class="dot" style="background:#4ade80"></div>
-        <span style="margin-left:6px">terminal</span>
+        <span class="term-label" style="margin-left:4px">terminal</span>
+        <button id="btn-copy">Copiar</button>
       </div>
       <div id="terminal"></div>
     </div>
@@ -222,7 +232,6 @@
 import { Terminal } from 'https://cdn.jsdelivr.net/npm/xterm@5.3.0/+esm';
 import { FitAddon } from 'https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/+esm';
 
-// ── xterm setup ──────────────────────────────────────────────
 const term = new Terminal({
   theme: {
     background: '#0a0c0f',
@@ -250,15 +259,14 @@ term.loadAddon(fitAddon);
 term.open(document.getElementById('terminal'));
 setTimeout(() => fitAddon.fit(), 100);
 
-// Input buffering
 let inputBuffer = '';
 term.onKey(({ key, domEvent }) => {
   const code = domEvent.keyCode;
-  if (code === 13) {             // Enter
+  if (code === 13) {
     ws && wsSend('input', inputBuffer + '\n');
     term.write('\r\n');
     inputBuffer = '';
-  } else if (code === 8) {       // Backspace
+  } else if (code === 8) {
     if (inputBuffer.length > 0) {
       inputBuffer = inputBuffer.slice(0, -1);
       term.write('\b \b');
@@ -271,7 +279,30 @@ term.onKey(({ key, domEvent }) => {
 
 new ResizeObserver(() => fitAddon.fit()).observe(document.getElementById('terminal'));
 
-// ── Monaco setup ─────────────────────────────────────────────
+// ── Botao Copiar ──
+const btnCopy = document.getElementById('btn-copy');
+btnCopy.addEventListener('click', () => {
+  const lines = [];
+  for (let i = 0; i < term.buffer.length; i++) {
+    const line = term.buffer.getLine(i);
+    if (line) {
+      const text = line.translateToString(true).trimEnd();
+      lines.push(text);
+    }
+  }
+  const texto = lines.join('\n').trim();
+  if (!texto) return;
+  navigator.clipboard.writeText(texto).then(() => {
+    btnCopy.textContent = 'Copiado!';
+    btnCopy.classList.add('copied');
+    setTimeout(() => {
+      btnCopy.textContent = 'Copiar';
+      btnCopy.classList.remove('copied');
+    }, 1500);
+  });
+});
+
+// ── Monaco ──
 require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' }});
 let editor;
 require(['vs/editor/editor.main'], () => {
@@ -299,7 +330,7 @@ require(['vs/editor/editor.main'], () => {
   });
 
   editor = monaco.editor.create(document.getElementById('editor'), {
-    value: `#include <stdio.h>\n\nint main() {\n    char nome[64];\n    printf("Digite seu nome: ");\n    scanf("%s", nome);\n    printf("Olá, %s!\\n", nome);\n    return 0;\n}\n`,
+    value: '#include <stdio.h>\n\nint main() {\n    char nome[64];\n    printf("Digite seu nome: ");\n    scanf("%s", nome);\n    printf("Ola, %s!\\n", nome);\n    return 0;\n}\n',
     language: 'c',
     theme: 'crun',
     fontFamily: "'JetBrains Mono','Fira Code',monospace",
@@ -318,7 +349,7 @@ require(['vs/editor/editor.main'], () => {
   new ResizeObserver(() => editor.layout()).observe(document.getElementById('editor'));
 });
 
-// ── Drag divider ─────────────────────────────────────────────
+// ── Divider ──
 const divider = document.getElementById('divider');
 const termWrap = document.getElementById('terminal-wrap');
 let dragging = false;
@@ -333,7 +364,7 @@ document.addEventListener('mousemove', (e) => {
 });
 document.addEventListener('mouseup', () => { dragging = false; document.body.style.cursor = ''; });
 
-// ── WebSocket ─────────────────────────────────────────────────
+// ── WebSocket ──
 let ws = null;
 const statusDot   = document.getElementById('status-dot');
 const statusLabel = document.getElementById('status-label');
@@ -341,6 +372,9 @@ const btnRun      = document.getElementById('btn-run');
 const btnStop     = document.getElementById('btn-stop');
 const serverInput = document.getElementById('server-input');
 const banner      = document.getElementById('conn-banner');
+
+// URL padrao do seu Render - conecta automaticamente
+const DEFAULT_SERVER = 'wss://c-compiler-vxh0.onrender.com';
 
 function showBanner(msg, type) {
   banner.textContent = msg;
@@ -364,11 +398,11 @@ function wsSend(type, data) {
 
 function connect(url) {
   if (ws) { ws.close(); ws = null; }
-  try { ws = new WebSocket(url); } catch { showBanner('URL inválida', 'fail'); return; }
+  try { ws = new WebSocket(url); } catch { showBanner('URL invalida', 'fail'); return; }
 
   ws.onopen = () => {
     serverInput.classList.add('connected');
-    showBanner('Conectado ao servidor', 'ok');
+    showBanner('Conectado', 'ok');
     setStatus('idle');
   };
   ws.onclose = () => {
@@ -377,7 +411,7 @@ function connect(url) {
     statusLabel.textContent = 'desconectado';
     btnRun.disabled = true;
   };
-  ws.onerror = () => showBanner('Erro de conexão', 'fail');
+  ws.onerror = () => showBanner('Erro de conexao', 'fail');
 
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
@@ -387,36 +421,35 @@ function connect(url) {
       term.write(msg.data.replace(/\n/g, '\r\n'));
     } else if (msg.type === 'compile_error') {
       setStatus('error');
-      term.write('\r\n\x1b[1;31m── Erro de compilação ──\x1b[0m\r\n');
+      term.write('\r\n\x1b[1;31m── Erro de compilacao ──\x1b[0m\r\n');
       term.write(msg.data.replace(/\n/g, '\r\n'));
     }
   };
 }
 
-// Evento corrigido para aceitar cliques e autocompletes de Enter com segurança
+// Salva no localStorage se o usuario digitar uma URL diferente
+serverInput.addEventListener('input', () => {
+  localStorage.setItem('crun-server', serverInput.value.trim());
+});
 serverInput.addEventListener('keypress', (e) => {
-  if (e.key === 'Enter' || e.keyCode === 13) {
+  if (e.key === 'Enter') {
     e.preventDefault();
     const url = serverInput.value.trim();
     if (url) connect(url);
   }
 });
-serverInput.addEventListener('blur', () => {
-  const url = serverInput.value.trim();
-  if (url && (!ws || ws.readyState !== WebSocket.OPEN)) connect(url);
-});
 
-// Load saved server URL
-const saved = localStorage.getItem('crun-server');
-if (saved) { serverInput.value = saved; connect(saved); }
-serverInput.addEventListener('input', () => localStorage.setItem('crun-server', serverInput.value.trim()));
+// AUTO-CONEXAO: usa URL salva, senao usa a padrao do Render
+const savedUrl = localStorage.getItem('crun-server');
+const urlToUse = savedUrl || DEFAULT_SERVER;
+serverInput.value = urlToUse;
+connect(urlToUse);
 
-// ── Buttons ───────────────────────────────────────────────────
+// ── Buttons ──
 document.getElementById('btn-run').addEventListener('click', () => {
   if (!editor) return;
   term.reset();
   inputBuffer = '';
-  // CORREÇÃO AQUI: Enviando a propriedade correta esperada pelo seu backend
   wsSend('run', editor.getValue());
 });
 
