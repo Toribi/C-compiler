@@ -32,6 +32,23 @@ setInterval(function() {
 
 app.get("/health", function(_, res) { res.json({ ok: true }); });
 
+function limparErroGCC(erro) {
+  // Remove o caminho completo, deixa so "main.c:"
+  erro = erro.replace(/\/tmp\/c-compiler\/[^\/]+\/main\.c:/g, "main.c:");
+
+  // Remove linhas do linker e collect2 (pouco uteis para o usuario)
+  var linhas = erro.split("\n");
+  var filtradas = [];
+  for (var i = 0; i < linhas.length; i++) {
+    var l = linhas[i];
+    if (/^\/usr\/bin\/ld:/.test(l)) continue;
+    if (/^collect2:/.test(l)) continue;
+    if (/^main\.c:\(.text/.test(l)) continue;
+    filtradas.push(l);
+  }
+  return filtradas.join("\n");
+}
+
 function ajustarLinhasErro(erro, offset) {
   if (offset <= 0) return erro;
   erro = erro.replace(/(main\.c:)(\d+)(:)/g, function(_, pre, num, pos) {
@@ -116,6 +133,7 @@ wss.on("connection", function(ws) {
 
       gcc.on("close", function(code) {
         if (code !== 0) {
+          var erroLimpo = limparErroGCC(compileErr);
           var erroFiltrado = filtrarErrosDoPrefixo(compileErr, PREFIXO_LINHAS);
           var erroFinal = ajustarLinhasErro(erroFiltrado, PREFIXO_LINHAS);
           if (erroFinal.trim()) {
