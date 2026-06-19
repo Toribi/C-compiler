@@ -17,7 +17,7 @@ const wss = new WebSocket.Server({ server });
 const TMP_DIR = "/tmp/c-compiler";
 if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR, { recursive: true });
 
-// Clean up old sessions periodically
+// Limpa sessões antigas periodicamente
 setInterval(() => {
   const now = Date.now();
   try {
@@ -32,6 +32,28 @@ setInterval(() => {
 }, 60_000);
 
 app.get("/health", (_, res) => res.json({ ok: true }));
+
+/**
+ * Ajusta os números de linha nos erros do GCC subtraindo o offset
+ * causado pelas linhas injetadas no início do código.
+ */
+function ajustarLinhasErro(erro, offset) {
+  if (offset <= 0) return erro;
+
+  // Padrão 1: /tmp/.../main.c:LINHA:COL: warning/error: ...
+  erro = erro.replace(/(main\.c:)(\d+)(:)/g, (_, pre, num, pos) => {
+    const novaLinha = Math.max(1, parseInt(num) - offset);
+    return pre + novaLinha + pos;
+  });
+
+  // Padrão 2: espaços + LINHA + " |" (carets de contexto do GCC)
+  erro = erro.replace(/^(\s*)(\d+) (\|)/gm, (_, spaces, num, pipe) => {
+    const novaLinha = Math.max(1, parseInt(num) - offset);
+    return spaces + novaLinha + " " + pipe;
+  });
+
+  return erro;
+}
 
 wss.on("connection", (ws) => {
   let childProcess = null;
@@ -53,7 +75,7 @@ wss.on("connection", (ws) => {
 
     // --- COMPILE + RUN ---
     if (msg.type === "run") {
-      // Kill any existing process
+      // Mata processo anterior se existir
       if (childProcess) {
         try { childProcess.kill("SIGKILL"); } catch (_) {}
         childProcess = null;
@@ -66,13 +88,24 @@ wss.on("connection", (ws) => {
       const srcPath = path.join(sessionDir, "main.c");
       const binPath = path.join(sessionDir, "main");
 
-      // Desativa o buffer de saída direto na primeira linha do código C antes de compilar!
-      const codigoTratado = `#include <stdio.h>\n__attribute__((constructor)) void desativar_buffer() { setvbuf(stdout, NULL, _IONBF, 0); }\n` + msg.data;
+      // Monta o prefixo sem duplicar #include <stdio.h>
+      let prefixo = "";
+      const codigoUsuario = msg.data;
+      const jaTemStdio = /^\s*#\s*include\s*<stdio\.h>\s*/m.test(codigoUsuario);
 
+      if (!jaTemStdio) {
+        prefixo += "#include <stdio.h>\n";
+      }
+      prefixo += "__attribute__((constructor)) void _desativar_buffer() { setvbuf(stdout, NULL, _IONBF, 0); }\n";
+
+      // Quantas linhas foram adicionadas (offset para correção de linha)
+      const offset = prefixo.split("\n").length - 1;
+
+      const codigoTratado = prefixo + codigoUsuario;
       fs.writeFileSync(srcPath, codigoTratado);
       send("status", "compiling");
 
-      // Compile
+      // Compila
       const gcc = spawn("gcc", [
         "-o", binPath,
         srcPath,
@@ -86,15 +119,15 @@ wss.on("connection", (ws) => {
 
       gcc.on("close", (code) => {
         if (code !== 0) {
-          send("compile_error", compileErr);
+          // CORREÇÃO PRINCIPAL: ajusta as linhas antes de enviar
+          send("compile_error", ajustarLinhasErro(compileErr, offset));
           send("status", "idle");
           return;
         }
 
         send("status", "running");
-        send("output", ""); // clear signal
+        send("output", "");
 
-        // CORREÇÃO DO SCANF: Adicionado stdio: ["pipe", "pipe", "pipe"] para criar os canais de texto
         childProcess = spawn(binPath, [], {
           cwd: sessionDir,
           timeout: 10000,
