@@ -79,6 +79,7 @@ function filtrarErrosDoPrefixo(erro, offset) {
 }
 
 wss.on("connection", function(ws) {
+  console.log("NOVO CLIENTE CONECTADO");
   var childProcess = null;
   var sessionDir = null;
 
